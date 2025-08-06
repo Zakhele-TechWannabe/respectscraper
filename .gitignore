@@ -214,3 +214,5 @@ check.bat
 .gitignore
 check.sh
 run_checks.py
+.vscode/settings.json
+.vscode/settings.json
