@@ -1,12 +1,10 @@
-import asyncio
 import json
-import logging
 import time
 from typing import Dict, List, Optional, Set, Union
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
-from ratelimit import limits, sleep_and_retry
+from pyrate_limiter import Duration, Limiter, Rate
 
 from .robots_checker import RobotsChecker
 from .file_extractor import FileExtractor
@@ -22,26 +20,24 @@ class WebScraper:
         self.config = self._load_config(config_path)
         self.logger = setup_logging(self.config['logging'])
         
-        # Initialize components
         self.robots_checker = RobotsChecker(self.config)
         self.file_extractor = FileExtractor(self.config)
         self.api_client = APIClient(self.config) if self.config['api']['enabled'] else None
         
-        # Initialize session
+        delay = self.config['crawling']['delay_between_requests']
+        self.rate_limiter = Limiter(Rate(1, Duration.SECOND * delay))
+        
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': self.config['general']['user_agent']
         })
         
-        # Configure SSL verification
         if not self.config['general'].get('verify_ssl', True):
             self.session.verify = False
-            # Disable SSL warnings when verification is disabled
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             self.logger.warning("SSL verification disabled - this reduces security!")
         
-        # Track visited URLs to avoid infinite loops
         self.visited_urls: Set[str] = set()
         self.results: List[Dict] = []
         
@@ -55,12 +51,11 @@ class WebScraper:
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in configuration file: {e}")
     
-    @sleep_and_retry
-    @limits(calls=1, period=1)  # Default rate limit - will be overridden by config
     def _make_request(self, url: str) -> Optional[requests.Response]:
         """Make a rate-limited HTTP request."""
         try:
-            # Apply configured delay
+            self.rate_limiter.try_acquire("request")
+
             time.sleep(self.config['crawling']['delay_between_requests'])
             
             response = self.session.get(
