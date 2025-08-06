@@ -196,7 +196,7 @@ def validate_installation() -> ValidationResults:
         "python-docx": "docx",
         "openai": "openai",
         "anthropic": "anthropic",
-        "ratelimit": "ratelimit",
+        "pyrate-limiter": "pyrate_limiter",
     }
 
     for package_name, import_name in required_packages.items():

@@ -103,6 +103,9 @@ Examples:
         "--validate", action="store_true", help="Validate existing configuration file"
     )
 
+    subparsers.add_parser("validate", help="Validate installation")
+    subparsers.add_parser("info", help="Show package info")
+
     return parser
 
 
