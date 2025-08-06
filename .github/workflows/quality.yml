@@ -1,0 +1,140 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 6 * * 1'  # Run weekly on Monday
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install black flake8 mypy isort bandit safety
+      
+      - name: Check code formatting with Black
+        run: |
+          black --check --diff webscraper/ tests/ examples/
+      
+      - name: Check import sorting with isort
+        run: |
+          isort --check-only --diff webscraper/ tests/ examples/
+      
+      - name: Lint with flake8
+        run: |
+          flake8 webscraper/ tests/ examples/ --statistics
+      
+      - name: Type checking with mypy
+        run: |
+          mypy webscraper/ --ignore-missing-imports --strict-optional
+        continue-on-error: true
+      
+      - name: Security check with bandit
+        run: |
+          bandit -r webscraper/ -ll
+      
+      - name: Dependency vulnerability check
+        run: |
+          safety check --json --output safety-report.json
+        continue-on-error: true
+      
+      - name: Upload safety report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-report
+          path: safety-report.json
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pydocstyle
+      
+      - name: Check docstring compliance
+        run: |
+          pydocstyle webscraper/ --explain --source
+        continue-on-error: true
+      
+      - name: Validate README and other docs
+        run: |
+          python -c "
+          import pathlib
+          readme = pathlib.Path('README.md').read_text()
+          assert 'RespectScraper' in readme
+          assert '## Installation' in readme
+          print('README.md validation passed')
+          "
+
+  performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-benchmark
+      
+      - name: Run performance tests
+        run: |
+          # Create a simple performance test
+          python -c "
+          import time
+          from webscraper import create_default_config, WebScraper
+          
+          # Test config creation performance
+          start = time.time()
+          create_default_config('perf_test_config.json')
+          config_time = time.time() - start
+          
+          # Test scraper initialization performance
+          start = time.time()
+          scraper = WebScraper('perf_test_config.json')
+          scraper.close()
+          init_time = time.time() - start
+          
+          print(f'Config creation: {config_time:.4f}s')
+          print(f'Scraper init: {init_time:.4f}s')
+          
+          # Simple performance assertions
+          assert config_time < 1.0, 'Config creation too slow'
+          assert init_time < 2.0, 'Scraper initialization too slow'
+          print('Performance tests passed')
+          "
+      
+      - name: Clean up
+        run: |
+          rm -f perf_test_config.json
