@@ -33,12 +33,12 @@ jobs:
         run: |
           flake8 webscraper --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 webscraper --count --exit-zero --max-complexity=10 --max-line-length=150 --statistics
-          continue-on-error: true
+        continue-on-error: true
 
       - name: Format check with black
         run: |
           black --check webscraper/
-          continue-on-error: true
+        continue-on-error: true
 
       - name: Test with pytest
         run: |
