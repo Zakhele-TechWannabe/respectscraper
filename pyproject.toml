@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "respectscraper"
-version = "0.1.1"
+version = "0.1.2"
 description = "Ethical web scraper with robots.txt compliance, AI-powered interpretation, and comprehensive content extraction"
 authors = [{name = "Zakhele Gamede", email = "info@zakhelegamede.com"}]
 readme = "README.md"

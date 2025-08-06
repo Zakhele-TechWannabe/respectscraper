@@ -29,7 +29,6 @@ def example_basic_scraping():
     else:
         print(f"Error: {result.get('reason', 'Unknown error')}")
     
-    # Clean up
     scraper.close()
     print()
 
