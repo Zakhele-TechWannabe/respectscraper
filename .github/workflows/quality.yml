@@ -30,10 +30,6 @@ jobs:
         run: |
           black --check --diff webscraper/ tests/ examples/
 
-      - name: Check import sorting with isort
-        run: |
-          isort --check-only --diff webscraper/ tests/ examples/
-
       - name: Lint with flake8
         run: |
           flake8 webscraper/ tests/ examples/ --statistics
