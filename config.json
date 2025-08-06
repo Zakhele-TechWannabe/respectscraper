@@ -1,0 +1,48 @@
+{
+  "general": {
+    "user_agent": "RespectScraper/1.0 (Ethical Bot)",
+    "timeout": 30,
+    "max_retries": 3,
+    "respect_robots_txt": true,
+    "brute_force": false,
+    "allow_user_override": true,
+    "verify_ssl": true,
+    "allow_ssl_bypass": false
+  },
+  "crawling": {
+    "nested_links": false,
+    "max_depth": 3,
+    "same_domain_only": true,
+    "delay_between_requests": 1.0,
+    "max_concurrent_requests": 5
+  },
+  "file_extraction": {
+    "download_files": false,
+    "supported_extensions": [".pdf", ".xlsx", ".xls", ".docx", ".doc", ".txt"],
+    "max_file_size_mb": 50,
+    "extract_content": true
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-3.5-turbo",
+    "api_key": "",
+    "base_url": "",
+    "max_tokens": 500,
+    "temperature": 0.1
+  },
+  "api": {
+    "enabled": false,
+    "endpoint": "https://your-api-endpoint.com/data",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer YOUR_API_KEY"
+    },
+    "timeout": 30
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "webscraper.log"
+  }
+}

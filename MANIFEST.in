@@ -1,0 +1,31 @@
+# Include important documentation files
+include README.md
+include LICENSE
+include NOTICE
+include LICENSE_COMPARISON.md
+include CHANGELOG.md
+include requirements.txt
+
+# Include configuration files
+include config.json
+
+# Include package data
+recursive-include webscraper *.py
+recursive-include examples *.py
+recursive-include tests *.py
+
+# Include additional documentation
+include pyproject.toml
+include setup.py
+include MANIFEST.in
+
+# Exclude development and build files
+exclude .gitignore
+exclude tox.ini
+exclude .coverage
+exclude .pytest_cache
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *~
+global-exclude *.log
+global-exclude .DS_Store

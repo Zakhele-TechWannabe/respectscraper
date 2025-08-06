@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "respectscraper"
+version = "0.1.0"
+description = "Ethical web scraper with robots.txt compliance, AI-powered interpretation, and comprehensive content extraction"
+authors = [{name = "Zakhele Gamede", email = "info@zakhelegamede.com"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "requests>=2.32.4",
+    "beautifulsoup4>=4.13.4",
+    "lxml>=6.0.0",
+    "PyPDF2>=3.0.1",
+    "openpyxl>=3.1.5",
+    "python-docx>=1.2.0",
+    "urllib3>=2.5.0",
+    "openai>=1.99.1",
+    "anthropic>=0.61.0",
+    "ratelimit>=2.2.1",
+    "aiohttp>=3.12.15",
+    "aiofiles>=24.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=0.991",
+]
+
+[project.urls]
+Homepage = "https://github.com/Zakhele-TechWannabe/respectscraper"
+Repository = "https://github.com/Zakhele-TechWannabe/respectscraper.git"
+Issues = "https://github.com/Zakhele-TechWannabe/respectscraper/issues"
+
+[project.scripts]
+respectscraper = "webscraper.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["webscraper*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
