@@ -200,12 +200,13 @@ class TestWebScraper:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("{ invalid json }")
             f.flush()
+            file_name = f.name
 
             try:
                 with pytest.raises(ValueError):
-                    WebScraper(f.name)
+                    WebScraper(file_name)
             finally:
-                os.unlink(f.name)
+                os.unlink(file_name)
 
     @patch("webscraper.core.WebScraper._make_request")
     def test_scrape_url_request_failure(self, mock_request: MagicMock) -> None:
