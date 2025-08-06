@@ -14,34 +14,34 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov black flake8 mypy
-      
+
       - name: Lint with flake8
         run: |
           flake8 webscraper --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 webscraper --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
-      
+
       - name: Format check with black
         run: |
           black --check webscraper/
-      
+
       - name: Test with pytest
         run: |
           python -m pytest tests/ -v --cov=webscraper --cov-report=term-missing
-      
+
       - name: Test CLI functionality
         run: |
           pip install -e .
@@ -49,7 +49,7 @@ jobs:
           respectscraper validate
           respectscraper info
         shell: bash
-      
+
       - name: Run installation test
         run: |
           python test_installation.py
@@ -57,31 +57,31 @@ jobs:
 
   security-check:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      
+
       - name: Install security tools
         run: |
           python -m pip install --upgrade pip
           pip install safety bandit
-      
+
       - name: Check for security vulnerabilities in dependencies
         run: |
           pip install -r requirements.txt
           safety check
         continue-on-error: true
-      
+
       - name: Run bandit security linter
         run: |
           bandit -r webscraper/ -f json -o bandit-report.json
         continue-on-error: true
-      
+
       - name: Upload bandit results
         uses: actions/upload-artifact@v4
         if: always()

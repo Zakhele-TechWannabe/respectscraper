@@ -12,10 +12,10 @@ license = "Apache-2.0"
 requires-python = ">=3.8"
 keywords = [
     "webscraper",
-    "scraping", 
+    "scraping",
     "robots.txt",
     "pdf",
-    "excel", 
+    "excel",
     "word",
     "ai",
     "llm",
@@ -33,7 +33,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
-    "Topic :: Software Development :: Libraries :: Python Modules", 
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Text Processing :: Markup :: HTML",
     "Topic :: Utilities",
 ]
