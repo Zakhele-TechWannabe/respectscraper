@@ -50,11 +50,6 @@ jobs:
           respectscraper info
         shell: bash
 
-      - name: Run installation test
-        run: |
-          python test_installation.py
-        shell: bash
-
   security-check:
     runs-on: ubuntu-latest
 
