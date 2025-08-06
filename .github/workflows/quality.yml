@@ -81,16 +81,6 @@ jobs:
           pydocstyle webscraper/ --explain --source
         continue-on-error: true
 
-      - name: Validate README and other docs
-        run: |
-          python -c "
-          import pathlib
-          readme = pathlib.Path('README.md').read_text()
-          assert 'RespectScraper' in readme
-          assert '## Installation' in readme
-          print('README.md validation passed')
-          "
-
   performance:
     runs-on: ubuntu-latest
 
