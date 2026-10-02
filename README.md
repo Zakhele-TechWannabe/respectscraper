@@ -27,6 +27,10 @@ Requires Python 3.10 or later.
 
 ## What it does
 
+- **Approve once, enforced everywhere.**
+  - Before a crawl, a preflight reads the site's robots.txt once and shows you the rules that apply, the pacing and the scope. You approve that once.
+  - The crawl then applies those same cached rules to every URL without asking again. Checking a URL is a local lookup, not another request.
+  - The approval carries a fingerprint, so a crawl that runs later stops if the site has changed its robots.txt in the meantime.
 - **robots.txt per request.** Each URL is checked before it is fetched, including pages found while crawling, linked files and every redirect hop. A redirect into a disallowed path is not followed.
 - **RFC 9309 semantics.**
   - The longest matching rule wins, and Allow wins a tie.
@@ -46,6 +50,7 @@ Requires Python 3.10 or later.
 ## Command line
 
 ```bash
+respectscraper preflight URL --depth 2   # the rules a crawl would follow, without crawling
 respectscraper check URL                 # is this URL allowed, and why (exit code 3 if not)
 respectscraper check URL --json          # the same decision as JSON
 respectscraper scrape URL                # fetch one page, print a JSON report
@@ -54,7 +59,29 @@ respectscraper config --create           # write respectscraper.json with the de
 respectscraper info                      # version and defaults
 ```
 
-Exit codes: `0` success, `1` error, `2` usage or configuration problem, `3` disallowed by robots.txt.
+In a terminal, `scrape` shows the preflight and asks once (`Crawl with these rules? [y/N]`) before fetching anything. The prompt goes to stderr, so a report redirected to a file stays valid JSON. Pass `--yes` to skip the prompt. When stdin is not a terminal (cron, CI, a worker), there is no prompt.
+
+```console
+$ respectscraper scrape https://example.gov.za/notices --depth 1 -o report.json
+Preflight for https://example.gov.za/notices
+  robots.txt   https://example.gov.za/robots.txt (72 bytes, sha256 1f0d121fc68f)
+  applies      user-agent '*', 2 rules
+    line 3: Disallow: /private/
+    line 4: Allow: /private/press/
+  start URL    Allowed: no rule for user-agent '*' matches this path.
+  pacing       3s between requests (the site's Crawl-delay)
+  scope        depth 1, up to 50 pages, same site only, files off
+  user agent   RespectScraper/0.2.0 (+https://github.com/Zakhele-TechWannabe/respectscraper)
+  Every page and file is still checked against these rules before it is fetched.
+Crawl with these rules? [y/N]
+```
+
+Exit codes:
+- `0` success
+- `1` error
+- `2` usage or configuration problem
+- `3` disallowed by robots.txt, or robots.txt changed since it was approved
+- `4` you declined at the prompt
 
 ## Python
 
@@ -72,11 +99,32 @@ with RespectScraper({"max_depth": 1, "download_files": True}) as scraper:
         print("skipped", skipped.url, skipped.reason)
 ```
 
-`crawl` returns a `CrawlReport` with `pages`, `files` and `skipped`. Every entry carries its `Decision`, and `report.to_dict()` gives the JSON the CLI prints. Skip reasons include:
+### Approve once in an application
+
+When the person approving a crawl and the process running it are separate, for example a web form and a background worker, store the preflight with the approval and pass its fingerprint to the crawl:
+
+```python
+# When the user asks to crawl a source
+with RespectScraper() as scraper:
+    plan = scraper.preflight("https://example.gov.za/notices", max_depth=1)
+show_to_user(plan.to_dict())  # rules, pacing, scope, start decision
+save_approval(plan.robots.fingerprint)  # once the user approves
+
+# Later, in the worker
+with RespectScraper() as scraper:
+    report = scraper.crawl(url, max_depth=1, approved_fingerprint=stored_fingerprint)
+```
+
+If the site's robots.txt has changed since approval, nothing is fetched. The report records `robots_changed_since_approval`, so you can ask the user to approve again.
+
+### Reports
+
+`crawl` returns a `CrawlReport` with `pages`, `files` and `skipped`. Every entry carries its `Decision`. `report.robots` holds the fingerprint, rules and fetch time of each robots.txt the crawl obeyed, which serves as an audit record of what the site permitted at the time. `report.to_dict()` gives the JSON the CLI prints. Skip reasons include:
 
 - `disallowed_by_rule`, `robots_unreachable`, `noindex`, `outside_site`
 - `too_large`, `files_disabled`, `unsupported_content`, `extraction_failed`
 - `http_<status>`, `fetch_failed`, `too_many_redirects`, `max_pages_reached`
+- `robots_changed_since_approval`
 
 ## Configuration
 
@@ -137,6 +185,16 @@ ruff check . && ruff format --check . && mypy respectscraper webscraper
 ```
 
 CI runs lint, type checks and the test suite on Python 3.10 to 3.13 and on Windows and macOS. It also builds the package and smoke-tests the installed wheel. Publishing a GitHub release tagged `vX.Y.Z` uploads to PyPI through trusted publishing, after the same checks pass and the tag is confirmed to match the package version.
+
+## Contact
+
+RespectScraper is built and maintained by Zakhele Gamede.
+
+- Website: [zakhelegamede.co.za](https://zakhelegamede.co.za)
+- Email: [hello@zakhelegamede.co.za](mailto:hello@zakhelegamede.co.za) or [gamedevoxzakhele@gmail.com](mailto:gamedevoxzakhele@gmail.com)
+- GitHub: [@Zakhele-TechWannabe](https://github.com/Zakhele-TechWannabe)
+
+Bugs and feature requests go in [issues](https://github.com/Zakhele-TechWannabe/respectscraper/issues). Report security problems privately: see [SECURITY.md](SECURITY.md).
 
 ## License
 

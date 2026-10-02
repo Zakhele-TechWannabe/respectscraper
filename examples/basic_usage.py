@@ -8,9 +8,11 @@ from respectscraper import RespectScraper
 
 def main(url: str) -> None:
     with RespectScraper({"max_depth": 1, "max_pages": 10}) as scraper:
-        # 1. Ask before fetching: the decision cites the robots.txt rule behind it.
-        decision = scraper.check(url)
-        print(f"{'allowed' if decision.allowed else 'not allowed'}: {decision.explain()}")
+        # 1. Preflight: read robots.txt once and show what the crawl may do.
+        plan = scraper.preflight(url)
+        print(plan.summary())
+        if not plan.can_crawl:
+            return
 
         # 2. Crawl. Every page, file and skip carries its own decision.
         report = scraper.crawl(url)

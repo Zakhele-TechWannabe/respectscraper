@@ -7,9 +7,11 @@ an LLM may explain a decision (see ``respectscraper.llm``) but never changes one
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from urllib.parse import quote, urlsplit
 
@@ -173,6 +175,13 @@ class RobotsTxt:
         star = [g for g in self.groups if any(agent.strip() == "*" for agent in g.agents)]
         return star, ("*" if star else None)
 
+    def rules_for(self, product_token: str) -> tuple[str | None, list[Rule], float | None]:
+        """The agent group that applies to this token, its rules, and its crawl delay."""
+        groups, agent = self._groups_for(product_token)
+        rules = sorted((rule for group in groups for rule in group.rules), key=lambda r: r.line)
+        delays = [g.crawl_delay for g in groups if g.crawl_delay is not None]
+        return agent, rules, (max(delays) if delays else None)
+
     def check(
         self, url: str, product_token: str
     ) -> tuple[bool, Rule | None, str | None, float | None]:
@@ -193,6 +202,32 @@ class RobotsTxt:
                 best = rule
         delays = [g.crawl_delay for g in groups if g.crawl_delay is not None]
         return (best is None or best.allow), best, agent, (max(delays) if delays else None)
+
+
+@dataclass(frozen=True)
+class RobotsSnapshot:
+    """What one origin's robots.txt said when it was read: the record a person approves.
+
+    ``fingerprint`` changes whenever the status or the text changes, so an approval
+    stored earlier can be compared with what the site says now.
+    """
+
+    robots_url: str
+    status: str  # found, missing, unreachable, or owner_override
+    fetched_at: str | None = None
+    detail: str | None = None
+    size_bytes: int = 0
+    fingerprint: str = ""
+    agent: str | None = None
+    rules: tuple[str, ...] = ()
+    crawl_delay: float | None = None
+    sitemaps: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["rules"] = list(self.rules)
+        data["sitemaps"] = list(self.sitemaps)
+        return data
 
 
 @dataclass
@@ -259,6 +294,44 @@ class RobotsPolicy:
             crawl_delay=delay,
         )
 
+    def snapshot(self, url: str) -> RobotsSnapshot:
+        """The robots.txt that governs ``url``, as this policy will apply it."""
+        robots_url = self.robots_url(url)
+        if (urlsplit(url).hostname or "").lower() in self.owner_override_hosts:
+            return RobotsSnapshot(robots_url, "owner_override", fingerprint=_fingerprint("owner"))
+        entry = self._entry(robots_url)
+        fetched_at = datetime.fromtimestamp(entry.fetched_at, timezone.utc).isoformat()
+        if entry.failure:
+            status = "unreachable"
+        elif entry.robots is None:
+            status = "missing"
+        else:
+            status = "found"
+        text = self.texts.get(robots_url, "") if status == "found" else ""
+        agent: str | None = None
+        rules: list[Rule] = []
+        delay: float | None = None
+        sitemaps: list[str] = []
+        if entry.robots is not None:
+            agent, rules, delay = entry.robots.rules_for(self.product_token)
+            sitemaps = entry.robots.sitemaps
+        return RobotsSnapshot(
+            robots_url,
+            status,
+            fetched_at,
+            entry.detail,
+            len(text.encode()),
+            _fingerprint(status, text),
+            agent,
+            tuple(f"line {rule.line}: {rule.text}" for rule in rules),
+            delay,
+            tuple(sitemaps),
+        )
+
+    def snapshots(self) -> list[RobotsSnapshot]:
+        """Every robots.txt this policy has read, for the report's audit trail."""
+        return [self.snapshot(robots_url) for robots_url in self._cache]
+
     def crawl_delay(self, url: str) -> float | None:
         entry = self._entry(self.robots_url(url))
         if entry.robots is None:
@@ -297,3 +370,7 @@ class RobotsPolicy:
             return _Entry(now, failure="status", detail=f"HTTP {status}")
         # Any other 4xx means unavailable: RFC 9309 2.3.1.3 allows crawling.
         return _Entry(now, detail=f"HTTP {status}")
+
+
+def _fingerprint(status: str, text: str = "") -> str:
+    return "sha256:" + hashlib.sha256(f"{status}\n{text}".encode()).hexdigest()

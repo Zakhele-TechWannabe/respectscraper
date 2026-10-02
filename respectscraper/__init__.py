@@ -3,15 +3,16 @@
 from respectscraper import RespectScraper
 
 with RespectScraper() as scraper:
-    print(scraper.check("https://example.com/private/").explain())
+    plan = scraper.preflight("https://example.com", max_depth=1)
+    print(plan.summary())  # approve once, then crawl; every URL is still checked
     report = scraper.crawl("https://example.com", max_depth=1)
 """
 
 from ._version import __version__
 from .config import APIConfig, Config, ConfigError, LLMConfig
-from .crawler import CrawlReport, Document, Page, RespectScraper, Skipped
+from .crawler import CrawlReport, Document, Page, Preflight, RespectScraper, Skipped
 from .extract import ExtractionError, normalize_url
-from .robots import Decision, Reason, RobotsPolicy, RobotsTxt
+from .robots import Decision, Reason, RobotsPolicy, RobotsSnapshot, RobotsTxt
 
 __all__ = [
     "APIConfig",
@@ -23,9 +24,11 @@ __all__ = [
     "ExtractionError",
     "LLMConfig",
     "Page",
+    "Preflight",
     "Reason",
     "RespectScraper",
     "RobotsPolicy",
+    "RobotsSnapshot",
     "RobotsTxt",
     "Skipped",
     "__version__",

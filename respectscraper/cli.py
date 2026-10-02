@@ -14,7 +14,7 @@ from .config import Config, ConfigError
 from .crawler import RespectScraper
 from .extract import normalize_url
 
-EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_DISALLOWED = 0, 1, 2, 3
+EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_DISALLOWED, EXIT_DECLINED = 0, 1, 2, 3, 4
 
 REMOVED_FLAGS = {
     "--brute-force": "was removed in 0.2.0; to crawl a site you own, use --owner HOST",
@@ -43,23 +43,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check.add_argument("--json", action="store_true", help="print the decision as JSON")
 
+    preflight = commands.add_parser(
+        "preflight", help="show what a crawl would be allowed to do, without crawling"
+    )
     scrape = commands.add_parser("scrape", help="crawl from a URL and print a JSON report")
-    scrape.add_argument("url")
-    scrape.add_argument("--config", "-c", help="configuration file")
-    scrape.add_argument("--depth", type=int, help="link depth to follow (0 = only this page)")
+    for command in (preflight, scrape):
+        command.add_argument("url")
+        command.add_argument("--config", "-c", help="configuration file")
+        command.add_argument("--depth", type=int, help="link depth to follow (0 = only this page)")
+        command.add_argument(
+            "--max-pages", type=int, help="stop after keeping this many pages and files"
+        )
+        command.add_argument(
+            "--download", action="store_true", help="download and extract linked files"
+        )
+        command.add_argument(
+            "--owner",
+            action="append",
+            default=[],
+            metavar="HOST",
+            help="a host you own; its robots.txt is not applied (repeatable)",
+        )
+        command.add_argument(
+            "--insecure", action="store_true", help="skip TLS certificate checks for this run only"
+        )
+    preflight.add_argument("--json", action="store_true", help="print the preflight as JSON")
     scrape.add_argument(
-        "--max-pages", type=int, help="stop after keeping this many pages and files"
+        "--yes", "-y", action="store_true", help="skip the one-time confirmation prompt"
     )
-    scrape.add_argument("--download", action="store_true", help="download and extract linked files")
     scrape.add_argument(
-        "--owner",
-        action="append",
-        default=[],
-        metavar="HOST",
-        help="a host you own; its robots.txt is not applied (repeatable)",
-    )
-    scrape.add_argument(
-        "--insecure", action="store_true", help="skip TLS certificate checks for this run only"
+        "--approved",
+        metavar="FINGERPRINT",
+        help="crawl only if robots.txt still matches this preflight fingerprint",
     )
     scrape.add_argument("--output", "-o", help="write the report to this file")
     scrape.add_argument("--pretty", action="store_true", help="indent the JSON report")
@@ -110,7 +125,7 @@ def run_check(args: argparse.Namespace) -> int:
     return EXIT_OK if decision.allowed else EXIT_DISALLOWED
 
 
-def run_scrape(args: argparse.Namespace) -> int:
+def _crawl_config(args: argparse.Namespace) -> Config:
     config = _load(args.config)
     if args.owner or args.insecure:
         config = replace(
@@ -118,13 +133,48 @@ def run_scrape(args: argparse.Namespace) -> int:
             owner_override_hosts=(*config.owner_override_hosts, *args.owner),
             verify_ssl=config.verify_ssl and not args.insecure,
         )
-    with RespectScraper(config) as scraper:
-        report = scraper.crawl(
+    return config
+
+
+def _interactive() -> bool:
+    return sys.stdin.isatty() and sys.stderr.isatty()
+
+
+def run_preflight(args: argparse.Namespace) -> int:
+    with RespectScraper(_crawl_config(args)) as scraper:
+        plan = scraper.preflight(
             args.url,
             max_depth=args.depth,
             max_pages=args.max_pages,
             download_files=args.download or None,
         )
+    print(json.dumps(plan.to_dict(), indent=2) if args.json else plan.summary())
+    return EXIT_OK if plan.can_crawl else EXIT_DISALLOWED
+
+
+def run_scrape(args: argparse.Namespace) -> int:
+    limits = {
+        "max_depth": args.depth,
+        "max_pages": args.max_pages,
+        "download_files": args.download or None,
+    }
+    with RespectScraper(_crawl_config(args)) as scraper:
+        approved = args.approved
+        # Ask once, upfront, when a person is at the terminal. The rules shown are the
+        # cached rules the crawl applies, and every URL is still checked against them.
+        if approved is None and not args.yes and _interactive():
+            plan = scraper.preflight(args.url, **limits)
+            print(plan.summary(), file=sys.stderr)
+            if not plan.can_crawl:
+                return EXIT_DISALLOWED
+            # Prompt on stderr so a redirected JSON report stays clean.
+            print("Crawl with these rules? [y/N] ", end="", file=sys.stderr, flush=True)
+            answer = sys.stdin.readline().strip().lower()
+            if answer not in ("y", "yes"):
+                print("Cancelled; nothing was crawled.", file=sys.stderr)
+                return EXIT_DECLINED
+            approved = plan.robots.fingerprint
+        report = scraper.crawl(args.url, approved_fingerprint=approved, **limits)
     text = json.dumps(report.to_dict(), indent=2 if args.pretty else None, ensure_ascii=False)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
@@ -139,7 +189,11 @@ def run_scrape(args: argparse.Namespace) -> int:
     if report.ok:
         return EXIT_OK
     start = normalize_url(args.url)
-    blocked = any(s.url == start and s.decision and not s.decision.allowed for s in report.skipped)
+    blocked = any(
+        s.url == start
+        and (s.reason == "robots_changed_since_approval" or (s.decision and not s.decision.allowed))
+        for s in report.skipped
+    )
     return EXIT_DISALLOWED if blocked else EXIT_ERROR
 
 
@@ -177,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "check":
             return run_check(args)
+        if args.command == "preflight":
+            return run_preflight(args)
         if args.command == "scrape":
             return run_scrape(args)
         if args.command == "config":

@@ -24,7 +24,7 @@ from .extract import (
     robots_directives,
 )
 from .fetch import Fetcher, FetchResult
-from .robots import MAX_REDIRECTS, Decision, RobotsPolicy
+from .robots import MAX_REDIRECTS, Decision, RobotsPolicy, RobotsSnapshot
 
 logger = logging.getLogger(__name__)
 HTML_TYPES = ("text/html", "application/xhtml+xml")
@@ -64,6 +64,82 @@ class Skipped:
 
 
 @dataclass
+class Preflight:
+    """Everything a person needs to approve a crawl once, before it starts.
+
+    Approving a preflight does not relax anything: every page and file is still checked
+    against the same rules before it is fetched. Store ``robots.fingerprint`` with the
+    approval and pass it to ``crawl(approved_fingerprint=...)`` so the crawl stops if the
+    site's robots.txt has changed since it was approved.
+    """
+
+    url: str
+    decision: Decision
+    robots: RobotsSnapshot
+    user_agent: str
+    pacing_seconds: float
+    max_depth: int
+    max_pages: int
+    download_files: bool
+    same_site_only: bool
+
+    @property
+    def can_crawl(self) -> bool:
+        return self.decision.allowed
+
+    def summary(self, max_rules: int = 15) -> str:
+        r = self.robots
+        lines = [f"Preflight for {self.url}"]
+        if r.status == "found":
+            short = r.fingerprint.removeprefix("sha256:")[:12]
+            lines.append(f"  robots.txt   {r.robots_url} ({r.size_bytes} bytes, sha256 {short})")
+            group = f"user-agent '{r.agent}'" if r.agent else "no group (nothing applies)"
+            lines.append(f"  applies      {group}, {len(r.rules)} rules")
+            lines += [f"    {rule}" for rule in r.rules[:max_rules]]
+            if len(r.rules) > max_rules:
+                lines.append(f"    ... and {len(r.rules) - max_rules} more")
+        else:
+            labels = {
+                "missing": "none: no restrictions",
+                "unreachable": "unreachable: the site is treated as disallowed",
+                "owner_override": "not applied: you listed this host as your own",
+            }
+            detail = f" ({r.detail})" if r.detail else ""
+            lines.append(f"  robots.txt   {r.robots_url} {labels[r.status]}{detail}")
+        lines.append(f"  start URL    {self.decision.explain()}")
+        source = (
+            " (the site's Crawl-delay)"
+            if r.crawl_delay and r.crawl_delay >= self.pacing_seconds
+            else ""
+        )
+        lines.append(f"  pacing       {self.pacing_seconds:g}s between requests{source}")
+        scope = "same site only" if self.same_site_only else "any site"
+        files = "files on" if self.download_files else "files off"
+        lines.append(
+            f"  scope        depth {self.max_depth}, up to {self.max_pages} pages, {scope}, {files}"
+        )
+        lines.append(f"  user agent   {self.user_agent}")
+        lines.append(
+            "  Every page and file is still checked against these rules before it is fetched."
+        )
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "url": self.url,
+            "can_crawl": self.can_crawl,
+            "decision": self.decision.to_dict(),
+            "robots": self.robots.to_dict(),
+            "user_agent": self.user_agent,
+            "pacing_seconds": self.pacing_seconds,
+            "max_depth": self.max_depth,
+            "max_pages": self.max_pages,
+            "download_files": self.download_files,
+            "same_site_only": self.same_site_only,
+        }
+
+
+@dataclass
 class CrawlReport:
     start_url: str
     user_agent: str
@@ -72,6 +148,7 @@ class CrawlReport:
     pages: list[Page] = field(default_factory=list)
     files: list[Document] = field(default_factory=list)
     skipped: list[Skipped] = field(default_factory=list)
+    robots: list[RobotsSnapshot] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -96,6 +173,7 @@ class CrawlReport:
             "pages": [convert(page) for page in self.pages],
             "files": [convert(doc) for doc in self.files],
             "skipped": [convert(skip) for skip in self.skipped],
+            "robots": [snapshot.to_dict() for snapshot in self.robots],
         }
 
 
@@ -160,6 +238,34 @@ class RespectScraper:
         """Whether robots.txt lets this scraper fetch the URL, and why."""
         return self.robots.decide(normalize_url(url))
 
+    def preflight(
+        self,
+        url: str,
+        *,
+        max_depth: int | None = None,
+        max_pages: int | None = None,
+        download_files: bool | None = None,
+    ) -> Preflight:
+        """Read the site's robots.txt once and summarise what a crawl would be allowed to do.
+
+        The robots.txt read here is cached, so a ``crawl`` on the same scraper applies
+        exactly the rules that were shown.
+        """
+        start = normalize_url(url)
+        decision = self.robots.decide(start)
+        snapshot = self.robots.snapshot(start)
+        return Preflight(
+            start,
+            decision,
+            snapshot,
+            self.config.user_agent,
+            max(self.config.delay_seconds, snapshot.crawl_delay or 0.0),
+            self.config.max_depth if max_depth is None else max_depth,
+            self.config.max_pages if max_pages is None else max_pages,
+            self.config.download_files if download_files is None else download_files,
+            self.config.same_site_only,
+        )
+
     def crawl(
         self,
         url: str,
@@ -167,10 +273,13 @@ class RespectScraper:
         max_depth: int | None = None,
         max_pages: int | None = None,
         download_files: bool | None = None,
+        approved_fingerprint: str | None = None,
     ) -> CrawlReport:
         """Crawl breadth-first from ``url``.
 
         ``max_depth`` 0 fetches only ``url`` (plus its linked files when downloading).
+        With ``approved_fingerprint`` (from ``preflight(...).robots.fingerprint``), nothing
+        is fetched if the start site's robots.txt no longer matches what was approved.
         """
         depth_limit = self.config.max_depth if max_depth is None else max_depth
         page_limit = self.config.max_pages if max_pages is None else max_pages
@@ -178,6 +287,19 @@ class RespectScraper:
         start = normalize_url(url)
         site = _site(urlsplit(start).hostname or "")
         report = CrawlReport(start, self.config.user_agent, datetime.now(timezone.utc).isoformat())
+
+        if approved_fingerprint is not None:
+            current = self.robots.snapshot(start).fingerprint
+            if current != approved_fingerprint:
+                report.skipped.append(
+                    Skipped(
+                        start,
+                        0,
+                        "robots_changed_since_approval",
+                        f"approved {approved_fingerprint}, now {current}",
+                    )
+                )
+                return self._finish(report)
 
         queue: deque[tuple[str, int]] = deque([(start, 0)])
         seen = {start}
@@ -254,6 +376,10 @@ class RespectScraper:
                 Document(current, final_url, depth, kind, len(result.content), text, decision)
             )
 
+        return self._finish(report)
+
+    def _finish(self, report: CrawlReport) -> CrawlReport:
+        report.robots = self.robots.snapshots()
         report.finished_at = datetime.now(timezone.utc).isoformat()
         if self.config.api.enabled:
             from .api import send_report

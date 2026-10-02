@@ -1,4 +1,4 @@
-include README.md LICENSE NOTICE CHANGELOG.md
+include README.md LICENSE NOTICE CHANGELOG.md SECURITY.md
 recursive-include tests *.py *.json
 recursive-include examples *.py *.json
 global-exclude __pycache__ *.py[cod]

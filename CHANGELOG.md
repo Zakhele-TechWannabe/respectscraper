@@ -16,6 +16,15 @@ A rewrite focused on correctness, safety and test coverage. The package is now i
 - Downloads are capped while streaming, and Office files are checked for zip bombs before they are opened.
 - LLM API keys are read from the environment only. A config file containing one is rejected.
 
+### Added
+- **Preflight and one-time approval.**
+  - `RespectScraper.preflight()` and `respectscraper preflight` show what a crawl would be allowed to do: the applicable rules with line numbers, the pacing, the scope and the start URL's decision.
+  - In a terminal, `scrape` asks once before crawling. `--yes` skips the prompt, and exit code 4 means you declined.
+  - Every URL is still checked against the same cached rules.
+- **Approval fingerprints.** `crawl(approved_fingerprint=...)` and `scrape --approved` fetch nothing if robots.txt has changed since it was approved.
+- **Audit record.** `CrawlReport.robots` records the fingerprint, rules and fetch time of each robots.txt the crawl obeyed.
+- **Security policy.** Added `SECURITY.md` with a private reporting route.
+
 ### Changed
 - robots.txt handling follows RFC 9309:
   - longest match wins, with Allow winning ties

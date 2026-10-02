@@ -7,6 +7,7 @@ name = "respectscraper"
 dynamic = ["version"]
 description = "Crawl websites within their robots.txt (RFC 9309), with a recorded reason for every request."
 authors = [{ name = "Zakhele Gamede", email = "gamedevoxzakhele@gmail.com" }]
+maintainers = [{ name = "Zakhele Gamede", email = "gamedevoxzakhele@gmail.com" }]
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
@@ -49,6 +50,8 @@ dev = [
 Homepage = "https://github.com/Zakhele-TechWannabe/respectscraper"
 Issues = "https://github.com/Zakhele-TechWannabe/respectscraper/issues"
 Changelog = "https://github.com/Zakhele-TechWannabe/respectscraper/blob/main/CHANGELOG.md"
+Security = "https://github.com/Zakhele-TechWannabe/respectscraper/security/policy"
+Author = "https://zakhelegamede.co.za"
 
 [project.scripts]
 respectscraper = "respectscraper.cli:main"
