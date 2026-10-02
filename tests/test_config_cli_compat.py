@@ -62,7 +62,7 @@ def test_cli_scrape_writes_a_report(site, tmp_path) -> None:
     out = tmp_path / "report.json"
 
     assert main(["scrape", site.base + "/", "-c", str(config), "-o", str(out), "-q"]) == EXIT_OK
-    assert json.loads(out.read_text())["pages"][0]["text"] == "hi"
+    assert json.loads(out.read_text(encoding="utf-8"))["pages"][0]["text"] == "hi"
 
 
 @pytest.mark.parametrize("flag", ["--brute-force", "--user-owns-site", "--ssl-bypass"])

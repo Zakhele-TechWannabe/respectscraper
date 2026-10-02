@@ -5,7 +5,9 @@ import pytest
 
 from respectscraper.robots import RobotsTxt
 
-SPEC = json.loads((Path(__file__).parent / "conformance" / "robots_cases.json").read_text())
+SPEC = json.loads(
+    (Path(__file__).parent / "conformance" / "robots_cases.json").read_text(encoding="utf-8")
+)
 
 
 @pytest.mark.parametrize("case", SPEC["cases"], ids=[c["name"] for c in SPEC["cases"]])
