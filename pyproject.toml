@@ -1,92 +1,89 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "respectscraper"
-version = "0.1.2"
-description = "Ethical web scraper with robots.txt compliance, AI-powered interpretation, and comprehensive content extraction"
-authors = [{name = "Zakhele Gamede", email = "info@zakhelegamede.com"}]
+dynamic = ["version"]
+description = "Crawl websites within their robots.txt (RFC 9309), with a recorded reason for every request."
+authors = [{ name = "Zakhele Gamede", email = "gamedevoxzakhele@gmail.com" }]
+maintainers = [{ name = "Zakhele Gamede", email = "gamedevoxzakhele@gmail.com" }]
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.8"
-keywords = [
-    "webscraper",
-    "scraping",
-    "robots.txt",
-    "pdf",
-    "excel",
-    "word",
-    "ai",
-    "llm",
-    "ethical",
-    "respectful"
-]
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+keywords = ["scraping", "crawler", "robots.txt", "rfc9309", "ethical", "pdf", "docx", "xlsx"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Text Processing :: Markup :: HTML",
-    "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
-    "requests>=2.32.3",
-    "beautifulsoup4>=4.13.4",
-    "lxml>=6.0.0",
-    "PyPDF2>=3.0.1",
-    "openpyxl>=3.1.5",
-    "python-docx>=1.2.0",
-    "urllib3>=2.5.0",
-    "openai>=1.66.3",
-    "anthropic>=0.61.0",
-    "pyrate-limiter>=3.9.0",
-    "aiohttp>=3.12.15",
-    "aiofiles>=24.1.0",
-    "tqdm>=4.67.1",
-    "colorama>=0.4.6",
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "charset-normalizer>=3.0",
+    "pypdf>=4.0",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
-    "mypy>=0.991",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "types-requests",
+    "build>=1.2",
+    "twine>=5",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Zakhele-TechWannabe/respectscraper"
-Repository = "https://github.com/Zakhele-TechWannabe/respectscraper.git"
 Issues = "https://github.com/Zakhele-TechWannabe/respectscraper/issues"
-Documentation = "https://github.com/Zakhele-TechWannabe/respectscraper/wiki"
+Changelog = "https://github.com/Zakhele-TechWannabe/respectscraper/blob/main/CHANGELOG.md"
+Security = "https://github.com/Zakhele-TechWannabe/respectscraper/security/policy"
+Author = "https://zakhelegamede.co.za"
 
 [project.scripts]
-respectscraper = "webscraper.cli:main"
+respectscraper = "respectscraper.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "respectscraper._version.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["webscraper*"]
+include = ["respectscraper*", "webscraper*"]
 
 [tool.setuptools.package-data]
-webscraper = ["*.json"]
+respectscraper = ["py.typed"]
 
-[tool.black]
-line-length = 150
-target-version = ["py38", "py39", "py310", "py311", "py312"]
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "N", "S", "SIM", "UP", "W"]
+ignore = ["S113"]  # requests calls always pass a timeout; S113 misreads the session wrapper
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S310"]
 
 [tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+python_version = "3.10"
+strict_optional = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+files = ["respectscraper"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning:respectscraper.*"]

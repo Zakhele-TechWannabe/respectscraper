@@ -5,25 +5,57 @@ All notable changes to the RespectScraper project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-02
 
-### Added
-- Nothing yet
-
-### Changed
-- Nothing yet
-
-### Deprecated
-- Nothing yet
-
-### Removed
-- Nothing yet
-
-### Fixed
-- Nothing yet
+A rewrite focused on correctness, safety and test coverage. The package is now imported as `respectscraper`, matching its install name.
 
 ### Security
-- Nothing yet
+- robots.txt is now checked for every URL the crawler fetches: nested pages, linked files and each redirect hop. Before this, only the start URL was checked.
+- Removed `brute_force` and `user_owns_site`, which turned robots.txt off for every site. They are replaced by `owner_override_hosts` / `--owner HOST`, which applies to named hosts only and is recorded in each decision.
+- Removed the process-wide TLS bypass and the automatic retry without certificate checks. `--insecure` now applies to a single run's session only.
+- Downloads are capped while streaming, and Office files are checked for zip bombs before they are opened.
+- LLM API keys are read from the environment only. A config file containing one is rejected.
+
+### Added
+- **Preflight and one-time approval.**
+  - `RespectScraper.preflight()` and `respectscraper preflight` show what a crawl would be allowed to do: the applicable rules with line numbers, the pacing, the scope and the start URL's decision.
+  - In a terminal, `scrape` asks once before crawling. `--yes` skips the prompt, and exit code 4 means you declined.
+  - Every URL is still checked against the same cached rules.
+- **Approval fingerprints.** `crawl(approved_fingerprint=...)` and `scrape --approved` fetch nothing if robots.txt has changed since it was approved.
+- **Audit record.** `CrawlReport.robots` records the fingerprint, rules and fetch time of each robots.txt the crawl obeyed.
+- **Security policy.** Added `SECURITY.md` with a private reporting route.
+
+### Changed
+- robots.txt handling follows RFC 9309:
+  - longest match wins, with Allow winning ties
+  - `*` and `$` wildcards
+  - percent-encoding normalisation
+  - merged agent groups
+  - a 500 KiB limit and a 24-hour cache
+- A robots.txt that cannot be fetched (5xx, 429 or a network error) now means disallow, not allow.
+- Every decision records its rule, line number, user-agent group and a reason code.
+- The LLM no longer makes decisions. It can only explain one (`check --explain`), and robots.txt is passed to it as data.
+- Requests honour `Crawl-delay` and `Retry-After`, with per-host pacing and bounded retries.
+- `noindex` and `nofollow` are honoured from meta tags, `X-Robots-Tag` and `rel="nofollow"`.
+- URLs are normalised, so fragments and duplicates are fetched once.
+- Extracted HTML text keeps the spaces between words.
+- Extraction errors are reported as skip reasons instead of being returned as page text.
+- The library no longer writes `webscraper.log` or configures logging. Only the CLI does.
+- PDF extraction uses `pypdf`, replacing the deprecated PyPDF2. Unused dependencies have been dropped.
+- The CLI has `check`, `scrape`, `config` and `info` commands with documented exit codes. `scrape` prints one JSON report.
+- Configuration is validated, and unknown keys are rejected.
+
+### Removed
+- `.doc` and `.xls` support, which was listed but never worked.
+- The flags `--brute-force`, `--user-owns-site` and `--ssl-bypass`. Each now prints what to use instead.
+
+### Deprecated
+- `import webscraper` still works, with a warning, through a compatibility shim. 0.1.x config files load with a warning.
+
+### Infrastructure
+- New test suite: RFC 9309 conformance cases, plus crawler, policy, extraction, CLI and compatibility tests run against a local HTTP server.
+- CI now fails on lint, type or test errors. It runs on Python 3.10 to 3.13, Windows and macOS, smoke-tests the built wheel and audits dependencies.
+- Releases check that the tag matches the package version before publishing through trusted publishing.
 
 ## [0.1.0] - 2024-01-01
 

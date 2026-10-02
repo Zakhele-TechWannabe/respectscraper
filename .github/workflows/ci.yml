@@ -2,87 +2,73 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+  schedule:
+    - cron: "0 6 * * 1" # weekly, to catch dependency breakage and advisories
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy respectscraper webscraper
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.11", "3.12"]
-
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest --cov=respectscraper --cov=webscraper --cov-report=term-missing --cov-fail-under=85
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov black flake8 mypy
-
-      - name: Lint with flake8
-        run: |
-          flake8 webscraper --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 webscraper --count --exit-zero --max-complexity=10 --max-line-length=150 --statistics
-        continue-on-error: true
-
-      - name: Format check with black
-        run: |
-          black --check webscraper/
-        continue-on-error: true
-
-      - name: Test with pytest
-        run: |
-          python -m pytest tests/ -v --cov=webscraper --cov-report=term-missing
-        continue-on-error: true
-
-      - name: Test CLI functionality
-        run: |
-          pip install -e .
-          respectscraper config --create --path test_config.json
-          respectscraper validate
-          respectscraper info
-        shell: bash
-
-  security-check:
+  package:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Install security tools
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: Install the wheel and smoke-test the CLI
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install safety bandit
-
-      - name: Check for security vulnerabilities in dependencies
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/respectscraper --version
+          /tmp/smoke/bin/respectscraper info
+          cd /tmp && /tmp/smoke/bin/respectscraper config --create --path smoke.json
+      - name: Audit installed dependencies for known vulnerabilities
         run: |
-          pip install -r requirements.txt
-          safety check
-        continue-on-error: true
-
-      - name: Run bandit security linter
-        run: |
-          bandit -r webscraper/ -f json -o bandit-report.json
-        continue-on-error: true
-
-      - name: Upload bandit results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-results
-          path: bandit-report.json
+          /tmp/smoke/bin/pip install pip-audit
+          /tmp/smoke/bin/pip-audit

@@ -1,237 +1,82 @@
-"""
-RespectScraper
+"""Deprecated import name for respectscraper.
 
-An ethical web scraping library with robots.txt compliance,
-AI-powered interpretation, nested link crawling, and comprehensive file extraction.
-
-Example usage:
-    from webscraper import WebScraper
-
-    scraper = WebScraper('config.json')
-    result = scraper.scrape_url('https://example.com', nested=True, download=True)
-    print(result)
+0.1.x code that does ``from webscraper import WebScraper`` keeps working through this
+shim, which warns and returns results in the old shape. New code should use
+``from respectscraper import RespectScraper``.
 """
 
-__version__ = "0.1.0"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
-__description__ = """
-Ethical web scraper with robots.txt compliance.
-AI-powered interpretation, and comprehensive content extraction
-"""
+from __future__ import annotations
 
-from typing import Dict, List, TypedDict
+import warnings
+from typing import Any
 
-from .api_client import APIClient
-from .core import WebScraper
-from .file_extractor import FileExtractor
-from .llm_client import LLMClient
-from .robots_checker import RobotsChecker
-from .utils import (
-    clean_text,
-    extract_domain,
-    format_file_size,
-    get_content_type,
-    get_file_extension,
-    is_same_domain,
-    is_valid_url,
-    normalize_url,
-    sanitize_filename,
-    validate_config,
+from respectscraper import *  # noqa: F403
+from respectscraper import Config, CrawlReport, RespectScraper, __version__  # noqa: F401
+
+warnings.warn(
+    "The 'webscraper' import name is deprecated; use 'respectscraper' instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
-__all__ = [
-    "WebScraper",
-    "RobotsChecker",
-    "FileExtractor",
-    "LLMClient",
-    "APIClient",
-    "is_same_domain",
-    "get_file_extension",
-    "is_valid_url",
-    "normalize_url",
-    "sanitize_filename",
-    "get_content_type",
-    "extract_domain",
-    "clean_text",
-    "format_file_size",
-    "validate_config",
-]
+
+class WebScraper(RespectScraper):
+    """0.1.x-compatible wrapper around RespectScraper."""
+
+    def __init__(self, config_path: str = "config.json") -> None:
+        super().__init__(config_path)
+
+    def scrape_url(
+        self,
+        url: str,
+        nested: bool | None = None,
+        download: bool | None = None,
+        brute_force: bool | None = None,
+        user_owns_site: bool = False,
+    ) -> dict[str, Any]:
+        if brute_force or user_owns_site:
+            raise ValueError(
+                "brute_force and user_owns_site were removed in 0.2.0. List hosts you own "
+                "in owner_override_hosts instead."
+            )
+        depth = (self.config.max_depth or 1) if nested else 0
+        report = self.crawl(url, max_depth=depth, download_files=download)
+        return _legacy(report)
 
 
-class ValidationResults(TypedDict):
-    valid: bool
-    missing_packages: List[str]
-    version_info: Dict[str, str]
-    recommendations: List[str]
-
-
-def create_default_config(output_path: str = "config.json") -> bool:
-    """
-    Create a default configuration file.
-
-    Args:
-        output_path: Path where to save the config file
-
-    Returns:
-        True if successful, False otherwise
-    """
-    import json
-
-    default_config = {
-        "general": {
-            "user_agent": "RespectScraper/1.0 (Ethical Bot)",
-            "timeout": 30,
-            "max_retries": 3,
-            "respect_robots_txt": True,
-            "brute_force": False,
-            "allow_user_override": True,
-            "verify_ssl": True,
-            "allow_ssl_bypass": False,
-        },
-        "crawling": {
-            "nested_links": False,
-            "max_depth": 3,
-            "same_domain_only": True,
-            "delay_between_requests": 1.0,
-            "max_concurrent_requests": 5,
-        },
-        "file_extraction": {
-            "download_files": False,
-            "supported_extensions": [".pdf", ".xlsx", ".xls", ".docx", ".doc", ".txt"],
-            "max_file_size_mb": 50,
-            "extract_content": True,
-        },
-        "llm": {
-            "provider": "openai",
-            "model": "gpt-3.5-turbo",
-            "api_key": "",
-            "base_url": "",
-            "max_tokens": 500,
-            "temperature": 0.1,
-        },
-        "api": {
-            "enabled": False,
-            "endpoint": "https://your-api-endpoint.com/data",
-            "method": "POST",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer YOUR_API_KEY",
-            },
-            "timeout": 30,
-        },
-        "logging": {
-            "level": "INFO",
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            "file": "webscraper.log",
-        },
-    }
-
-    try:
-        with open(output_path, "w") as f:
-            json.dump(default_config, f, indent=2)
-        return True
-    except Exception:
-        return False
-
-
-def quick_scrape(
-    url: str,
-    config_path: str = "config.json",
-    nested: bool = False,
-    download: bool = False,
-    brute_force: bool = False,
-) -> dict:
-    """
-    Quick scraping function for simple use cases.
-
-    Args:
-        url: URL to scrape
-        config_path: Path to configuration file
-        nested: Enable nested link crawling
-        download: Enable file downloading
-        brute_force: Ignore robots.txt
-
-    Returns:
-        Scraping results dictionary
-    """
-    try:
-        scraper = WebScraper(config_path)
-        result = scraper.scrape_url(
-            url=url, nested=nested, download=download, brute_force=brute_force
-        )
-        scraper.close()
-        return result
-    except Exception as e:
+def _legacy(report: CrawlReport) -> dict[str, Any]:
+    if not report.ok or not report.pages:
+        reason = report.skipped[0] if report.skipped else None
         return {
-            "url": url,
+            "url": report.start_url,
             "success": False,
-            "error": "quick_scrape_failed",
-            "reason": str(e),
+            "error": reason.reason if reason else "scraping_failed",
+            "reason": (reason.detail or reason.reason) if reason else "nothing fetched",
             "data": None,
         }
+    first, *rest = report.pages
 
+    def page(p: Any) -> dict[str, Any]:
+        return {
+            "url": p.url,
+            "success": True,
+            "data": {
+                "title": p.title,
+                "meta_description": p.description,
+                "text_content": p.text,
+                "word_count": p.word_count,
+                "depth": p.depth,
+            },
+        }
 
-def validate_installation() -> ValidationResults:
-    """
-    Validate that all dependencies are properly installed.
-
-    Returns:
-        ValidationResults: Dictionary with validation results
-    """
-
-    results: ValidationResults = {
-        "valid": True,
-        "missing_packages": [],
-        "version_info": {},
-        "recommendations": [],
-    }
-
-    required_packages = {
-        "requests": "requests",
-        "beautifulsoup4": "bs4",
-        "lxml": "lxml",
-        "PyPDF2": "PyPDF2",
-        "openpyxl": "openpyxl",
-        "python-docx": "docx",
-        "openai": "openai",
-        "anthropic": "anthropic",
-        "pyrate-limiter": "pyrate_limiter",
-    }
-
-    for package_name, import_name in required_packages.items():
-        try:
-            module = __import__(import_name)
-            if hasattr(module, "__version__"):
-                results["version_info"][package_name] = module.__version__
-            else:
-                results["version_info"][package_name] = "unknown"
-        except ImportError:
-            results["valid"] = False
-            results["missing_packages"].append(package_name)
-
-    if results["missing_packages"]:
-        results["recommendations"].append(
-            f"Missing packages: pip install {' '.join(results['missing_packages'])}"
-        )
-
-    if not results["missing_packages"]:
-        results["recommendations"].append("All dependencies are properly installed!")
-
-    return results
-
-
-def get_version() -> str:
-    """Get package version."""
-    return __version__
-
-
-def get_info() -> dict:
-    """Get package information."""
-    return {
-        "name": "respectscraper",
-        "version": __version__,
-        "author": __author__,
-        "email": __email__,
-        "description": __description__,
-    }
+    data = page(first)
+    data["data"]["nested_pages"] = [page(p) for p in rest]
+    data["data"]["extracted_files"] = [
+        {
+            "url": f.url,
+            "success": True,
+            "data": {"file_type": f.file_type, "content": f.text, "size_bytes": f.size_bytes},
+        }
+        for f in report.files
+    ]
+    return data
