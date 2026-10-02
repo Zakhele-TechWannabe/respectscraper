@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.31",
-    "beautifulsoup4>=4.12",
+    "beautifulsoup4>=4.15.0",
     "charset-normalizer>=3.0",
     "pypdf>=4.0",
     "openpyxl>=3.1",
