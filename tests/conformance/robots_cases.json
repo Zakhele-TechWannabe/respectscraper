@@ -1,0 +1,272 @@
+{
+  "source": "RFC 9309 sections 2.1 to 2.2 and Google's robots.txt specification examples",
+  "user_agent_token": "RespectScraper",
+  "cases": [
+    {
+      "name": "empty robots.txt allows everything",
+      "robots_txt": "",
+      "path": "/anything",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "disallow root blocks the site",
+      "robots_txt": "User-agent: *\nDisallow: /",
+      "path": "/page",
+      "allowed": false,
+      "rule": "Disallow: /"
+    },
+    {
+      "name": "directory rule blocks its contents",
+      "robots_txt": "User-agent: *\nDisallow: /private/",
+      "path": "/private/report.html",
+      "allowed": false,
+      "rule": "Disallow: /private/"
+    },
+    {
+      "name": "directory rule does not block the bare name",
+      "robots_txt": "User-agent: *\nDisallow: /private/",
+      "path": "/private",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "prefix match is literal",
+      "robots_txt": "User-agent: *\nDisallow: /private/",
+      "path": "/privatefoo",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "longest match wins (allow)",
+      "robots_txt": "User-agent: *\nAllow: /p\nDisallow: /",
+      "path": "/page",
+      "allowed": true,
+      "rule": "Allow: /p"
+    },
+    {
+      "name": "equal length: allow wins",
+      "robots_txt": "User-agent: *\nAllow: /folder\nDisallow: /folder",
+      "path": "/folder/page",
+      "allowed": true,
+      "rule": "Allow: /folder"
+    },
+    {
+      "name": "longer wildcard disallow beats shorter allow",
+      "robots_txt": "User-agent: *\nAllow: /page\nDisallow: /*.htm",
+      "path": "/page.htm",
+      "allowed": false,
+      "rule": "Disallow: /*.htm"
+    },
+    {
+      "name": "$ anchors the root only",
+      "robots_txt": "User-agent: *\nAllow: /$\nDisallow: /",
+      "path": "/",
+      "allowed": true,
+      "rule": "Allow: /$"
+    },
+    {
+      "name": "$ anchor does not extend",
+      "robots_txt": "User-agent: *\nAllow: /$\nDisallow: /",
+      "path": "/page.htm",
+      "allowed": false,
+      "rule": "Disallow: /"
+    },
+    {
+      "name": "wildcard with end anchor matches",
+      "robots_txt": "User-agent: *\nDisallow: /*.php$",
+      "path": "/index.php",
+      "allowed": false,
+      "rule": "Disallow: /*.php$"
+    },
+    {
+      "name": "end anchor rejects a query",
+      "robots_txt": "User-agent: *\nDisallow: /*.php$",
+      "path": "/index.php?x=1",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "end anchor rejects a longer suffix",
+      "robots_txt": "User-agent: *\nDisallow: /*.php$",
+      "path": "/index.php5",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "trailing wildcard is a prefix",
+      "robots_txt": "User-agent: *\nDisallow: /fish*",
+      "path": "/fish.html",
+      "allowed": false,
+      "rule": "Disallow: /fish*"
+    },
+    {
+      "name": "paths are case-sensitive",
+      "robots_txt": "User-agent: *\nDisallow: /fish",
+      "path": "/Fish.asp",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "wildcard matches mid-path",
+      "robots_txt": "User-agent: *\nDisallow: /*.php",
+      "path": "/folder/any.php.file.html",
+      "allowed": false,
+      "rule": "Disallow: /*.php"
+    },
+    {
+      "name": "rules can match the query",
+      "robots_txt": "User-agent: *\nDisallow: /*?",
+      "path": "/page?x=1",
+      "allowed": false,
+      "rule": "Disallow: /*?"
+    },
+    {
+      "name": "query rule ignores plain paths",
+      "robots_txt": "User-agent: *\nDisallow: /*?",
+      "path": "/page",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "our own group replaces the * group",
+      "robots_txt": "User-agent: RespectScraper\nDisallow: /a\n\nUser-agent: *\nDisallow: /",
+      "path": "/b",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "our own group still applies its rules",
+      "robots_txt": "User-agent: RespectScraper\nDisallow: /a\n\nUser-agent: *\nDisallow: /",
+      "path": "/a/x",
+      "allowed": false,
+      "rule": "Disallow: /a"
+    },
+    {
+      "name": "user-agent matching is case-insensitive",
+      "robots_txt": "user-agent: respectscraper\ndisallow: /x",
+      "path": "/x",
+      "allowed": false,
+      "rule": "Disallow: /x"
+    },
+    {
+      "name": "several user-agent lines share one group",
+      "robots_txt": "User-agent: foo\nUser-agent: RespectScraper\nDisallow: /y",
+      "path": "/y",
+      "allowed": false,
+      "rule": "Disallow: /y"
+    },
+    {
+      "name": "groups for the same agent are combined",
+      "robots_txt": "User-agent: RespectScraper\nDisallow: /a\n\nUser-agent: RespectScraper\nDisallow: /b",
+      "path": "/b",
+      "allowed": false,
+      "rule": "Disallow: /b"
+    },
+    {
+      "name": "a versioned user-agent line still matches the product token",
+      "robots_txt": "User-agent: RespectScraper/1.0\nDisallow: /v",
+      "path": "/v",
+      "allowed": false,
+      "rule": "Disallow: /v"
+    },
+    {
+      "name": "rules for another bot do not apply",
+      "robots_txt": "User-agent: Googlebot\nDisallow: /",
+      "path": "/page",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "rules before any user-agent belong to no group",
+      "robots_txt": "Disallow: /\nUser-agent: *\nAllow: /",
+      "path": "/page",
+      "allowed": true,
+      "rule": "Allow: /"
+    },
+    {
+      "name": "an empty disallow matches nothing",
+      "robots_txt": "User-agent: *\nDisallow:",
+      "path": "/page",
+      "allowed": true,
+      "rule": null
+    },
+    {
+      "name": "comments are ignored",
+      "robots_txt": "User-agent: * # everyone\nDisallow: /secret # hidden",
+      "path": "/secret",
+      "allowed": false,
+      "rule": "Disallow: /secret"
+    },
+    {
+      "name": "unreserved percent-encoding is equivalent",
+      "robots_txt": "User-agent: *\nDisallow: /%7Ejoe/",
+      "path": "/~joe/index.html",
+      "allowed": false,
+      "rule": "Disallow: /%7Ejoe/"
+    },
+    {
+      "name": "non-ASCII paths compare after encoding",
+      "robots_txt": "User-agent: *\nDisallow: /ä",
+      "path": "/%C3%A4rger",
+      "allowed": false,
+      "rule": "Disallow: /ä"
+    },
+    {
+      "name": "a rule without a leading slash is anchored at the root",
+      "robots_txt": "User-agent: *\nDisallow: private",
+      "path": "/private/x",
+      "allowed": false,
+      "rule": "Disallow: /private"
+    },
+    {
+      "name": "a byte order mark is ignored",
+      "robots_txt": "﻿User-agent: *\nDisallow: /bom",
+      "path": "/bom",
+      "allowed": false,
+      "rule": "Disallow: /bom"
+    },
+    {
+      "name": "CRLF line endings parse",
+      "robots_txt": "User-agent: *\r\nDisallow: /crlf\r\n",
+      "path": "/crlf",
+      "allowed": false,
+      "rule": "Disallow: /crlf"
+    },
+    {
+      "name": "a user-agent line after rules starts a new group",
+      "robots_txt": "User-agent: *\nDisallow: /a\nUser-agent: RespectScraper\nAllow: /",
+      "path": "/a",
+      "allowed": true,
+      "rule": "Allow: /"
+    },
+    {
+      "name": "consecutive user-agent lines form one group",
+      "robots_txt": "User-agent: *\nUser-agent: RespectScraper\nDisallow: /z",
+      "path": "/z",
+      "allowed": false,
+      "rule": "Disallow: /z"
+    },
+    {
+      "name": "a more specific allow opens a disallowed directory",
+      "robots_txt": "User-agent: *\nDisallow: /docs/\nAllow: /docs/public/",
+      "path": "/docs/public/guide",
+      "allowed": true,
+      "rule": "Allow: /docs/public/"
+    },
+    {
+      "name": "the disallowed directory stays closed elsewhere",
+      "robots_txt": "User-agent: *\nDisallow: /docs/\nAllow: /docs/public/",
+      "path": "/docs/private",
+      "allowed": false,
+      "rule": "Disallow: /docs/"
+    },
+    {
+      "name": "the common useragent misspelling is accepted",
+      "robots_txt": "useragent: *\nDisallow: /typo",
+      "path": "/typo",
+      "allowed": false,
+      "rule": "Disallow: /typo"
+    }
+  ]
+}

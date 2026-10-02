@@ -1,495 +1,143 @@
 # RespectScraper
 
-An ethical Python web scraping library that prioritizes robots.txt compliance, features AI-powered interpretation of ambiguous rules, and provides comprehensive content extraction capabilities.
+[![CI](https://github.com/Zakhele-TechWannabe/respectscraper/actions/workflows/ci.yml/badge.svg)](https://github.com/Zakhele-TechWannabe/respectscraper/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/respectscraper)](https://pypi.org/project/respectscraper/)
+[![Python](https://img.shields.io/pypi/pyversions/respectscraper)](https://pypi.org/project/respectscraper/)
+[![License](https://img.shields.io/pypi/l/respectscraper)](LICENSE)
 
-## 🚀 Features
+A Python crawler that follows a site's robots.txt (RFC 9309) on every request it makes and records the reason for each one.
 
-- **Robots.txt Compliance**: Automatically checks and respects robots.txt files with intelligent parsing
-- **AI-Powered Interpretation**: Uses configurable LLM providers (OpenAI, Anthropic, Custom) to interpret ambiguous robots.txt files
-- **Nested Link Crawling**: Crawls nested links with configurable depth limits and domain restrictions
-- **Comprehensive File Extraction**: Downloads and extracts content from PDFs, Excel files, Word documents, and text files
-- **Respectful Rate Limiting**: Built-in rate limiting to prevent overwhelming target servers
-- **API Integration**: Configurable API endpoints to seamlessly send scraped data
-- **Flexible Configuration**: JSON-based configuration for all settings and behaviors
-- **Command Line Interface**: Intuitive CLI for common scraping tasks
-- **Ethical Override Options**: Support for user-owned sites and brute force mode with clear disclaimers
+Every page and file it fetches, and every one it refuses, comes with a decision that cites the robots.txt rule, line number and user-agent group behind it. The decision comes from a parser, never a model, so the same input always gives the same answer.
 
-## 📦 Installation
+```console
+$ respectscraper check https://example.com/private/report.pdf
+NOT ALLOWED  https://example.com/private/report.pdf
+  Disallowed by 'Disallow: /private/' (line 3) for user-agent '*'.
+  robots.txt: https://example.com/robots.txt
+  crawl-delay: 2.0s
+```
 
-### From PyPI (when published)
+## Install
+
 ```bash
 pip install respectscraper
 ```
 
-### From Source
+Requires Python 3.10 or later.
+
+## What it does
+
+- **robots.txt per request.** Each URL is checked before it is fetched, including pages found while crawling, linked files and every redirect hop. A redirect into a disallowed path is not followed.
+- **RFC 9309 semantics.**
+  - The longest matching rule wins, and Allow wins a tie.
+  - `*` and `$` wildcards are supported, and percent-encoding is normalised.
+  - Groups that name the same agent are merged.
+  - A robots.txt that returns 4xx means no restrictions. One that returns 5xx or 429, or fails to fetch, means the site is treated as disallowed until it can be read.
+  - robots.txt is fetched once per origin and cached for 24 hours.
+  - The parser is tested against 38 conformance cases in [tests/conformance](tests/conformance/robots_cases.json).
+- **Polite by default.**
+  - Requests to one host are spaced by `delay_seconds`, or by the site's `Crawl-delay` if that is longer.
+  - Retries are bounded, and `Retry-After` is honoured (capped at 60s).
+  - The crawler identifies itself with a user agent that links back to this repository.
+- **Page-level directives.** `noindex` and `nofollow` in `<meta name="robots">` or the `X-Robots-Tag` header are honoured, as are `rel="nofollow"` links.
+- **Bounded downloads.** Size limits apply while streaming, not after the download finishes. Office files are checked for zip bombs before they are opened.
+- **Text extraction** from HTML, PDF, DOCX, XLSX, TXT and CSV.
+
+## Command line
+
 ```bash
-git clone https://github.com/Zakhele-TechWannabe/respectscraper.git
-cd respectscraper
-pip install -e .
+respectscraper check URL                 # is this URL allowed, and why (exit code 3 if not)
+respectscraper check URL --json          # the same decision as JSON
+respectscraper scrape URL                # fetch one page, print a JSON report
+respectscraper scrape URL --depth 2 --max-pages 100 --download -o report.json
+respectscraper config --create           # write respectscraper.json with the defaults
+respectscraper info                      # version and defaults
 ```
 
-### Dependencies
-The package requires Python 3.8+ and the following libraries:
-- requests
-- beautifulsoup4
-- lxml
-- PyPDF2
-- openpyxl
-- python-docx
-- openai (optional, for LLM features)
-- anthropic (optional, for LLM features)
-- ratelimit
-- aiohttp
-- aiofiles
+Exit codes: `0` success, `1` error, `2` usage or configuration problem, `3` disallowed by robots.txt.
 
-## 🎯 Quick Start
+## Python
 
-### 1. Create Configuration
-```bash
-respectscraper config --create
-```
-
-### 2. Basic Scraping
 ```python
-from webscraper import WebScraper
+from respectscraper import RespectScraper
 
-scraper = WebScraper('config.json')
-result = scraper.scrape_url('https://example.com')
-print(result)
-scraper.close()
+with RespectScraper({"max_depth": 1, "download_files": True}) as scraper:
+    decision = scraper.check("https://example.com/private/")
+    print(decision.allowed, decision.explain())
+
+    report = scraper.crawl("https://example.com/")
+    for page in report.pages:
+        print(page.url, page.title, page.word_count)
+    for skipped in report.skipped:
+        print("skipped", skipped.url, skipped.reason)
 ```
 
-### 3. Command Line Usage
-```bash
-# Basic scraping
-respectscraper scrape https://example.com
+`crawl` returns a `CrawlReport` with `pages`, `files` and `skipped`. Every entry carries its `Decision`, and `report.to_dict()` gives the JSON the CLI prints. Skip reasons include:
 
-# With nested links and file extraction
-respectscraper scrape https://example.com --nested --download
+- `disallowed_by_rule`, `robots_unreachable`, `noindex`, `outside_site`
+- `too_large`, `files_disabled`, `unsupported_content`, `extraction_failed`
+- `http_<status>`, `fetch_failed`, `too_many_redirects`, `max_pages_reached`
 
-# Ignore robots.txt (use responsibly)
-respectscraper scrape https://example.com --brute-force
+## Configuration
 
-# Save results to file
-respectscraper scrape https://example.com --output results.json --pretty
-```
+Pass a dict, a `Config`, or a path to a JSON file. Unknown keys are rejected, so a typo cannot silently change behaviour.
 
-## ⚙️ Configuration
-
-The scraper uses a JSON configuration file. Create a default one with:
-
-```bash
-respectscraper config --create
-```
-
-### Key Configuration Sections
-
-#### General Settings
 ```json
 {
-  "general": {
-    "user_agent": "AdvancedWebScraper/1.0 (Respectful Bot)",
-    "timeout": 30,
-    "max_retries": 3,
-    "respect_robots_txt": true,
-    "brute_force": false,
-    "allow_user_override": true
-  }
+  "user_agent": "RespectScraper/0.2.0 (+https://github.com/Zakhele-TechWannabe/respectscraper)",
+  "timeout": 20,
+  "max_retries": 2,
+  "delay_seconds": 1.0,
+  "max_depth": 0,
+  "max_pages": 50,
+  "same_site_only": true,
+  "download_files": false,
+  "file_types": [".pdf", ".docx", ".xlsx", ".txt", ".csv"],
+  "max_file_mb": 25,
+  "verify_ssl": true,
+  "owner_override_hosts": [],
+  "llm": { "provider": "openai", "model": "", "api_key_env": "RESPECTSCRAPER_LLM_API_KEY" },
+  "api": { "enabled": false, "endpoint": "", "method": "POST", "headers": {} }
 }
 ```
 
-#### LLM Integration (for robots.txt interpretation)
-```json
-{
-  "llm": {
-    "provider": "openai",
-    "model": "gpt-3.5-turbo",
-    "api_key": "your-api-key-here",
-    "max_tokens": 500,
-    "temperature": 0.1
-  }
-}
-```
+**Sites you own.** To crawl a site you own, list its host in `owner_override_hosts` or pass `--owner HOST`. The override applies only to that host and shows as `owner_override` in every decision it affects.
 
-#### API Integration
-```json
-{
-  "api": {
-    "enabled": true,
-    "endpoint": "https://your-api-endpoint.com/data",
-    "method": "POST",
-    "headers": {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer YOUR_API_KEY"
-    }
-  }
-}
-```
+**Plain-language explanations (optional).** `respectscraper check URL --explain` asks a model to explain the decision in a sentence or two.
+- It supports OpenAI, Anthropic, or any OpenAI-compatible `base_url`.
+- The key is read from the environment variable named in `api_key_env`, never from the config file.
+- The explanation is advisory only and never changes a decision. The robots.txt text is sent to the model as data, not as instructions.
 
-## 📖 Usage Examples
+**Report delivery (optional).** With `api.enabled`, each crawl report is sent as JSON to an HTTPS endpoint you control.
 
-### Basic Website Scraping
-```python
-from webscraper import WebScraper
+## Upgrading from 0.1.x
 
-scraper = WebScraper('config.json')
-result = scraper.scrape_url('https://example.com')
+0.2.0 is a rewrite. The main changes:
 
-if result['success']:
-    data = result['data']
-    print(f"Title: {data['title']}")
-    print(f"Content: {data['text_content'][:500]}...")
-else:
-    print(f"Failed: {result['reason']}")
+| 0.1.x | 0.2.0 |
+| --- | --- |
+| `from webscraper import WebScraper` | `from respectscraper import RespectScraper` (the old import still works for now, with a deprecation warning) |
+| robots.txt checked for the start URL only | checked for every page, file and redirect |
+| an LLM could decide ambiguous robots.txt files | the parser decides; an LLM can only explain |
+| `brute_force`, `--brute-force` | removed |
+| `user_owns_site`, `--user-owns-site` | `owner_override_hosts`, `--owner HOST` |
+| `allow_ssl_bypass`, `--ssl-bypass` | `--insecure`, for one run only |
+| `llm.api_key` in the config file | `RESPECTSCRAPER_LLM_API_KEY` in the environment |
+| `.doc` and `.xls` listed as supported | removed (they were never extracted) |
 
-scraper.close()
-```
+Old configuration files still load, with a warning, unless they enable a removed bypass or contain an API key. In those cases loading fails with a message saying what to change. See the [changelog](CHANGELOG.md) for the full list.
 
-### Nested Link Crawling
-```python
-result = scraper.scrape_url(
-    'https://example.com',
-    nested=True  # Enable nested crawling
-)
-
-if result['success'] and 'nested_pages' in result['data']:
-    for page in result['data']['nested_pages']:
-        print(f"Found page: {page['url']}")
-        if page['success']:
-            print(f"  Title: {page['data']['title']}")
-```
-
-### File Extraction
-```python
-result = scraper.scrape_url(
-    'https://example.com/documents',
-    download=True  # Enable file downloading
-)
-
-if result['success'] and 'extracted_files' in result['data']:
-    for file_data in result['data']['extracted_files']:
-        print(f"Extracted: {file_data['url']}")
-        print(f"Type: {file_data['data']['file_type']}")
-        print(f"Content: {file_data['data']['content'][:200]}...")
-```
-
-### Handling Robots.txt Restrictions
-```python
-# Respect robots.txt (default)
-result = scraper.scrape_url('https://example.com')
-
-# User claims site ownership (with disclaimer)
-result = scraper.scrape_url('https://example.com', user_owns_site=True)
-
-# Brute force mode (ignore robots.txt - use responsibly)
-result = scraper.scrape_url('https://example.com', brute_force=True)
-```
-
-### Quick Scraping Function
-```python
-from webscraper import quick_scrape
-
-result = quick_scrape(
-    url='https://example.com',
-    nested=True,
-    download=False
-)
-```
-
-## 🤖 LLM Integration
-
-The scraper can use AI to interpret ambiguous robots.txt files. Supported providers:
-
-### OpenAI
-```json
-{
-  "llm": {
-    "provider": "openai",
-    "model": "gpt-3.5-turbo",
-    "api_key": "your-openai-api-key"
-  }
-}
-```
-
-### Anthropic Claude
-```json
-{
-  "llm": {
-    "provider": "anthropic",
-    "model": "claude-3-sonnet-20240229",
-    "api_key": "your-anthropic-api-key"
-  }
-}
-```
-
-### Custom Provider
-```json
-{
-  "llm": {
-    "provider": "custom",
-    "model": "your-model",
-    "api_key": "your-api-key",
-    "base_url": "https://your-llm-endpoint.com"
-  }
-}
-```
-
-## 🔧 CLI Commands
-
-### Scraping
-```bash
-# Basic scraping
-respectscraper scrape https://example.com
-
-# Advanced options
-respectscraper scrape https://example.com \
-  --nested \
-  --download \
-  --config custom_config.json \
-  --output results.json \
-  --pretty
-
-# Ignore robots.txt
-respectscraper scrape https://example.com --brute-force
-
-# User owns site
-respectscraper scrape https://example.com --user-owns-site
-
-# Bypass SSL certificate verification (for problematic sites)
-respectscraper scrape https://example.com --ssl-bypass
-```
-
-### Configuration
-```bash
-# Create default config
-respectscraper config --create
-
-# Create config at custom path
-respectscraper config --create --path my_config.json
-
-# Validate existing config
-respectscraper config --validate --path config.json
-```
-
-### Validation and Info
-```bash
-# Validate installation
-respectscraper validate
-
-# Show package info
-respectscraper info
-```
-
-## 🔒 Handling SSL Certificate Issues
-
-Some websites have SSL certificate problems that prevent scraping. RespectScraper provides several ways to handle this:
-
-### Quick Solution (CLI)
-```bash
-# Bypass SSL verification for a single scrape
-respectscraper scrape https://problematic-site.com --ssl-bypass
-```
-
-### Configuration Solution
-Edit your `config.json`:
-```json
-{
-  "general": {
-    "verify_ssl": false,
-    "allow_ssl_bypass": true
-  }
-}
-```
-
-### Python API Solution
-```python
-scraper = WebScraper('config.json')
-# Temporarily disable SSL verification
-scraper.session.verify = False
-result = scraper.scrape_url('https://problematic-site.com')
-```
-
-### ⚠️ Security Warning
-Disabling SSL verification reduces security. Only use this for:
-- Trusted websites with known certificate issues
-- Internal/development servers
-- When you understand the security implications
-
-## 📁 File Extraction Support
-
-The scraper can extract content from various file types:
-
-- **PDF**: Text extraction from all pages with metadata
-- **Excel**: Cell data from all sheets with sheet names
-- **Word**: Text and tables with document metadata
-- **Text**: Auto-encoding detection for text files
-
-## 🛡️ Ethical Usage
-
-This tool is designed for **responsible web scraping**:
-
-### ✅ Good Practices
-- Always respect robots.txt files
-- Use appropriate delays between requests
-- Don't overload servers with too many concurrent requests
-- Only scrape public, non-copyrighted content
-- Respect terms of service
-- Use the `user_owns_site` flag only for sites you actually own
-
-### ❌ Don't Use For
-- Scraping content behind login walls without permission
-- Violating website terms of service
-- Overloading servers with aggressive scraping
-- Collecting personal or private data
-- Copyright infringement
-
-### Robots.txt Override Options
-
-The scraper provides override options but use them responsibly:
-
-1. **User Owns Site**: Use `user_owns_site=True` only if you actually own the website
-2. **Brute Force**: Use `brute_force=True` only with explicit permission or for testing
-3. **Both options show disclaimers about responsible usage**
-
-## 🔍 API Integration
-
-Send scraped data automatically to your API:
-
-```python
-# Configure in config.json
-{
-  "api": {
-    "enabled": true,
-    "endpoint": "https://your-api.com/scraped-data",
-    "method": "POST",
-    "headers": {
-      "Authorization": "Bearer YOUR_TOKEN"
-    }
-  }
-}
-```
-
-The scraper will automatically send structured data:
-```json
-{
-  "timestamp": "2024-01-01T12:00:00Z",
-  "data": {
-    "url": "https://example.com",
-    "title": "Example Title",
-    "content": "Scraped content...",
-    "word_count": 500,
-    "nested_pages": [...],
-    "extracted_files": [...]
-  }
-}
-```
-
-## 🧪 Testing Installation
+## Development
 
 ```bash
-# Validate installation
-respectscraper validate
-
-# Test with a simple page
-respectscraper scrape https://httpbin.org/html --pretty
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+pytest                      # runs against a local HTTP server; no network needed
+ruff check . && ruff format --check . && mypy respectscraper webscraper
 ```
 
-## 📚 Advanced Usage
+CI runs lint, type checks and the test suite on Python 3.10 to 3.13 and on Windows and macOS. It also builds the package and smoke-tests the installed wheel. Publishing a GitHub release tagged `vX.Y.Z` uploads to PyPI through trusted publishing, after the same checks pass and the tag is confirmed to match the package version.
 
-### Custom User Agent
-```python
-# Modify config.json
-{
-  "general": {
-    "user_agent": "MyRespectfulBot/1.0 (+https://mysite.com/bot-info)"
-  }
-}
-```
+## License
 
-### Rate Limiting Configuration
-```python
-{
-  "crawling": {
-    "delay_between_requests": 2.0,  # 2 seconds between requests
-    "max_concurrent_requests": 3    # Max 3 concurrent requests
-  }
-}
-```
-
-### File Size Limits
-```python
-{
-  "file_extraction": {
-    "max_file_size_mb": 100,  # Don't download files larger than 100MB
-    "supported_extensions": [".pdf", ".xlsx", ".docx", ".txt"]
-  }
-}
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **"Configuration file not found"**
-   ```bash
-   respectscraper config --create
-   ```
-
-2. **"LLM API key not configured"**
-   - Edit `config.json` and add your API key in the `llm` section
-
-3. **"Robots.txt blocks scraping"**
-   - Check the robots.txt file manually
-   - Use `--user-owns-site` if you own the site
-   - Use `--brute-force` only if you have permission
-
-4. **"SSL Certificate verification failed"**
-   - Try with SSL bypass: `respectscraper scrape URL --ssl-bypass`
-   - Or edit config.json: `"allow_ssl_bypass": true, "verify_ssl": false`
-   - ⚠️ **Warning**: Only bypass SSL for trusted sites
-
-5. **"Rate limited"**
-   - Increase `delay_between_requests` in config
-   - Reduce `max_concurrent_requests`
-
-6. **"File extraction failed"**
-   - Check if the file type is supported
-   - Verify file isn't corrupted
-   - Check file size limits
-
-### Debug Mode
-```python
-# Enable debug logging
-{
-  "logging": {
-    "level": "DEBUG",
-    "file": "debug.log"
-  }
-}
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-**Why Apache 2.0?** It provides better patent protection, trademark protection, and clearer legal terms for enterprise use while maintaining the same freedoms as MIT. See [LICENSE_COMPARISON.md](LICENSE_COMPARISON.md) for details.
-
-## 🔗 Links
-
-- [Documentation](https://github.com/Zakhele-TechWannabe/respectscraper/wiki)
-- [Issue Tracker](https://github.com/Zakhele-TechWannabe/respectscraper/issues)
-- [Changelog](CHANGELOG.md)
-
-## ⚖️ Disclaimer
-
-This tool is provided for educational and legitimate scraping purposes. Users are responsible for ensuring their usage complies with applicable laws, regulations, and website terms of service. The developers are not responsible for any misuse of this software.
-
-Always scrape responsibly and ethically!
+Apache 2.0. See [LICENSE](LICENSE).

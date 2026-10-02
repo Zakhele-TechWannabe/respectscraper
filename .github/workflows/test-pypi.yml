@@ -1,97 +1,61 @@
-name: Test PyPI Deployment
+name: TestPyPI
+
+# Manual dry run of a release: build, verify, upload to TestPyPI, then install it back.
 
 on:
-  push:
-    tags:
-      - 'v*-dev*'
-      - 'v*-alpha*'
-      - 'v*-beta*'
-      - 'v*-rc*'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
-      - name: Install dependencies and test
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-          python -m pytest tests/ -v
-
-  build-and-publish-testpypi:
+  publish:
+    needs: build
     runs-on: ubuntu-latest
-    needs: test
     permissions:
       id-token: write
-
     environment:
       name: testpypi
       url: https://test.pypi.org/project/respectscraper/
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/download-artifact@v4
         with:
-          python-version: "3.11"
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-
-      - name: Build package
-        run: |
-          python -m build
-
-      - name: Check distributions
-        run: |
-          python -m twine check dist/*
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist/
           skip-existing: true
 
-  test-installation:
+  install:
+    needs: publish
     runs-on: ubuntu-latest
-    needs: build-and-publish-testpypi
-
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Test installation from TestPyPI
+          python-version: "3.12"
+      - name: Install from TestPyPI (dependencies from PyPI)
         run: |
-          # Wait a bit for the package to be available
-          sleep 60
-
-          # Install from TestPyPI with fallback to PyPI for dependencies
-          python -m pip install --upgrade pip
-          python -m pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ respectscraper
-
-          # Test basic functionality
-          python -c "import webscraper; print('Import successful')"
-          respectscraper --help
-          respectscraper info
+          for attempt in 1 2 3 4 5; do
+            pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ \
+              respectscraper && break
+            sleep 30
+          done
+          respectscraper --version
+          python -c "from respectscraper import RespectScraper"
